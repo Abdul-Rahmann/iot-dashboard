@@ -1,0 +1,17 @@
+name: iot-env
+channels:
+  - conda-forge
+  - pytorch
+dependencies:
+  - python=3.9
+  - dash=2.12.0
+  - dash-bootstrap-components=1.4.0
+  - pandas=1.5.3
+  - numpy=1.23.5
+  - scikit-learn=1.1.3
+  - plotly=5.15.0
+  - pytorch=2.0.1
+  - torchvision=0.15.2
+  - pip
+  - pip:
+      - joblib==1.4.2
