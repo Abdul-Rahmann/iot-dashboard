@@ -20,6 +20,12 @@ def generate_iot_data(num_devices=5, num_samples=100, interval=1.0):
             temperature = np.random.normal(loc=25.0, scale=2.0)
             vibration = np.random.normal(loc=3.0, scale=0.5)
             pressure = np.random.normal(loc=1, scale=0.1)
+
+            if i > num_samples // 2 and device_id == 3:  # Simulate anomalies for device 3
+                temperature += np.random.choice([-15, 15])  # Add a large spike/drop
+                vibration += np.random.choice([-2, 2])  # Spike or drop in vibration
+                pressure += np.random.choice([-0.5, 0.5])  # Simulate pressure anomaly
+
             data.append([timestamp, device_id, temperature, vibration, pressure])
         time.sleep(interval)
 
