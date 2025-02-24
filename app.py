@@ -6,6 +6,7 @@ import dash_bootstrap_components as dbc
 import plotly.express as px
 import pandas as pd
 import io
+import random
 from simulation.iot_simulator import generate_data
 from ml.dbscan_anomaly_detection import preprocess_live_data, predict_clusters_live, load_dbscan_model
 
@@ -66,6 +67,20 @@ app.layout = dbc.Container([
             ], className="mb-4"),
         ], width=9),
     ], className="mb-4"),
+
+    dbc.Card([
+        dbc.CardHeader("Remaining Useful Life (RUL) Prediction"),
+        dbc.CardBody([
+            dcc.Loading(
+                id="loading-rul-chart",
+                type="circle",
+                children=[
+                    dcc.Graph(id="rul-bar-chart")
+                ]
+            )
+        ])
+    ], className="mb-4"),
+
     dbc.Card([
         dbc.CardHeader("Device Status Table"),
         dbc.CardBody(
@@ -106,9 +121,63 @@ app.layout = dbc.Container([
 ], fluid=True)
 
 
+# =================
+# HELPER FUNCTIONS
+# =================
+def simulate_rul_predictions(devices):
+    """
+    Simulate Remaining Useful Life (RUL) predictions for the given devices.
+    Devices with a status of 'Anomaly' will have lower RUL.
+    """
+    rul_predictions = []
+    for device_id in devices:
+        # Generate RUL between 5-50 days for "Healthy" and 1-10 days for "Anomaly"
+        if iot_data[iot_data['device_id'] == device_id].iloc[-1]["status"] == "Anomaly":
+            rul = random.randint(1, 10)  # Low RUL due to anomaly
+        else:
+            rul = random.randint(10, 50)  # Higher RUL if Healthy
+
+        rul_predictions.append({'device_id': device_id, 'predicted_rul': rul})
+
+    return rul_predictions
+
+
 # ==========
 # CALLBACKS
 # ==========
+@app.callback(
+    Output("rul-bar-chart", "figure"),
+    [Input("update-interval", "n_intervals")]
+)
+def update_rul_predictions(n_intervals):
+    if iot_data.empty:
+        # Return an empty figure if no data is available
+        return px.bar(title="No RUL Data Available")
+
+    # Get list of device IDs
+    device_ids = iot_data['device_id'].unique()
+
+    # Simulate RUL predictions for devices
+    rul_predictions = simulate_rul_predictions(device_ids)
+
+    # Convert to a DataFrame for visualization
+    rul_df = pd.DataFrame(rul_predictions)
+
+    # Create a bar chart (device_id vs predicted_rul)
+    fig = px.bar(
+        rul_df, x="device_id", y="predicted_rul",
+        labels={"predicted_rul": "RUL (Days)", "device_id": "Device ID"},
+        title="Remaining Useful Life (RUL) by Device",
+        template="plotly_white",
+        color="predicted_rul",  # Optional color coding by RUL
+        color_continuous_scale="Viridis"
+    )
+
+    # Add threshold line (RUL < 10 days is an alert)
+    fig.add_hline(y=10, line_dash="dot", line_color="red", annotation_text="Maintenance Needed")
+
+    return fig
+
 
 @app.callback(
     Output("download-dataframe-csv", "data"),
