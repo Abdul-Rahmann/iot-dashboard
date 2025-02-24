@@ -5,6 +5,7 @@ from dash.dependencies import Input, Output
 import dash_bootstrap_components as dbc
 import plotly.express as px
 import pandas as pd
+import io
 from simulation.iot_simulator import generate_data
 from ml.dbscan_anomaly_detection import preprocess_live_data, predict_clusters_live, load_dbscan_model
 
@@ -89,6 +90,14 @@ app.layout = dbc.Container([
         )
     ], className="mb-4"),
 
+    # Add to the layout
+    dbc.Card([
+        dbc.CardBody([
+            dbc.Button("Download CSV", id="download-button", color="primary", className="me-2"),
+            dcc.Download(id="download-dataframe-csv")
+        ])
+    ], className="mb-4"),
+
     dcc.Interval(
         id="update-interval",
         interval=2000,  # Increase interval to reduce processing load
@@ -100,6 +109,29 @@ app.layout = dbc.Container([
 # ==========
 # CALLBACKS
 # ==========
+
+@app.callback(
+    Output("download-dataframe-csv", "data"),
+    [Input("download-button", "n_clicks")],
+    prevent_initial_call=True  # Ensures callback only runs after the button is clicked
+)
+def export_csv(n_clicks):
+    # Ensure there's data to export
+    if iot_data.empty:
+        return dcc.send_file(io.StringIO("No data available"), filename="iot_data.csv")
+
+    # Convert the iot_data DataFrame into a CSV buffer
+    buffer = io.StringIO()
+    export_data = iot_data.copy()
+    export_data.to_csv(buffer, index=False)
+
+    # Reset the buffer for downloading
+    buffer.seek(0)
+
+    # Provide the data for download
+    return dcc.send_data_frame(export_data.to_csv, filename="iot_data.csv")
+
+
 @app.callback(
     Output('device-status-table', 'data'),
     [Input('update-interval', 'n_intervals')]
