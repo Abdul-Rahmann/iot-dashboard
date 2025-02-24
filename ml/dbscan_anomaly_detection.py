@@ -1,25 +1,26 @@
 import pandas as pd
 import numpy as np
 from sklearn.cluster import DBSCAN
-from sklearn.preprocessing import MinMaxScaler
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from sklearn.decomposition import PCA
 from sklearn.metrics import silhouette_score
 import matplotlib.pyplot as plt
 import plotly.express as px
 import joblib
 
-# Initialize a scaler for reuse
-scaler = MinMaxScaler()
-
 
 # ====================
 #  DATA PROCESSING
 # ====================
-def preprocess_data(file_path):
+
+def preprocess_data(file_path, scaler_path="data/models/scaler.joblib"):
     """
     Preprocess CSV data for DBSCAN clustering (batch mode).
+    Ensures consistent scaling by saving the fitted scaler.
+
     Args:
         file_path (str): Path to input CSV file.
+        scaler_path (str): Path to save fitted scaler.
 
     Returns:
         normalized_data (np.ndarray): Normalized features.
@@ -27,34 +28,49 @@ def preprocess_data(file_path):
     """
     data = pd.read_csv(file_path)
     features = data[['temperature', 'vibration', 'pressure']].values
+
+    # Fit and save the StandardScaler
+    scaler = MinMaxScaler()
     normalized_data = scaler.fit_transform(features)
+    joblib.dump(scaler, scaler_path)
+
+    print(f"Scaler fitted and saved to {scaler_path}.")
     return normalized_data, data
 
 
-def preprocess_live_data(data, scaler=scaler):
+def preprocess_live_data(data, scaler_path="data/models/scaler.joblib"):
     """
-    Preprocess live IoT data for clustering (real-time mode).
+    Preprocess live IoT data using the saved scaler.
+
     Args:
-        data (pd.DataFrame): Dataframe with embedded metrics ['temperature', 'vibration', 'pressure'].
-        scaler (MinMaxScaler): Fitted MinMaxScaler for normalization.
+        data (pd.DataFrame): Dataframe with ['temperature', 'vibration', 'pressure'].
+        scaler_path (str): Path to load the trained scaler.
 
     Returns:
         normalized_data (np.ndarray): Normalized real-time features.
     """
     features = data[['temperature', 'vibration', 'pressure']].values
-    return scaler.fit_transform(features)
+
+    # Load the fitted scaler and transform live data
+    try:
+        scaler = joblib.load(scaler_path)
+    except FileNotFoundError:
+        raise ValueError(f"Scaler file not found at {scaler_path}. Train the model first.")
+
+    return scaler.transform(features)
 
 
 # ====================
 #  MODEL TRAINING & TUNING
 # ====================
+
 def tune_dbscan_parameters(data, eps_range, min_samples_range, verbose=True):
     """
     Tune DBSCAN hyperparameters for batch data.
     Args:
         data (np.ndarray): Dataset for DBSCAN clustering.
         eps_range (iterable): Range of epsilon values to search.
-        min_samples_range (iterable): Range of minimum samples to search.
+        min_samples_range (iterable): Range of min_samples values.
         verbose (bool): Print tuning progress.
 
     Returns:
@@ -75,7 +91,7 @@ def tune_dbscan_parameters(data, eps_range, min_samples_range, verbose=True):
             dbscan = DBSCAN(eps=eps, min_samples=min_samples)
             labels = dbscan.fit_predict(data)
 
-            # Skip if all points are classified as anomalies or a single cluster
+            # Skip if all points are anomalies or a single cluster
             if len(set(labels)) <= 1:
                 continue
 
@@ -100,32 +116,29 @@ def tune_dbscan_parameters(data, eps_range, min_samples_range, verbose=True):
 # ====================
 #  MODEL INFERENCE
 # ====================
+
 def predict_clusters_live(model, data):
     """
     Apply a pre-trained DBSCAN model to detect clusters in real-time data.
     Args:
         model (DBSCAN): Pre-trained DBSCAN model.
-        data (np.ndarray): Real-time normalized data for clustering.
+        data (np.ndarray): Real-time normalized data.
 
     Returns:
         labels (np.ndarray): Cluster labels predicted by the model.
     """
     if model is None:
         raise ValueError("DBSCAN model is not loaded. Please load the model first.")
-    return model.fit_predict(data)  # Assign cluster labels for real-time data
+    return model.fit_predict(data)
 
 
 # ====================
 #  MODEL UTILITIES
 # ====================
+
 def load_dbscan_model(model_path):
     """
-    Load a pre-trained DBSCAN model from disk.
-    Args:
-        model_path (str): Path to the trained model file.
-
-    Returns:
-        model (DBSCAN): Loaded DBSCAN model.
+    Load a pre-trained DBSCAN model.
     """
     try:
         model = joblib.load(model_path)
@@ -138,95 +151,37 @@ def load_dbscan_model(model_path):
 
 def save_dbscan_model(model, model_path):
     """
-    Save a trained DBSCAN model to disk.
-    Args:
-        model (DBSCAN): Trained model to save.
-        model_path (str): Path to save the model file.
+    Save a trained DBSCAN model.
     """
     joblib.dump(model, model_path)
     print(f"DBSCAN model saved successfully to {model_path}.")
 
 
 # ====================
-#  VISUALIZATION
-# ====================
-def visualize_clusters_2D(data, labels):
-    """
-    Visualize clusters in 2D using PCA dimensionality reduction.
-    Args:
-        data (np.ndarray): Input feature data for visualization.
-        labels (np.ndarray): Cluster labels for the data.
-    """
-    pca = PCA(n_components=2)
-    reduced_data = pca.fit_transform(data)
-    plt.figure(figsize=(10, 6))
-    unique_labels = set(labels)
-
-    for label in unique_labels:
-        if label == -1:
-            color = 'red'
-            label_name = 'Anomaly'
-        else:
-            color = plt.cm.jet(float(label) / len(unique_labels))
-            label_name = f'Cluster {label}'
-        plt.scatter(
-            reduced_data[labels == label, 0],
-            reduced_data[labels == label, 1],
-            c=color,
-            label=label_name,
-            s=40, alpha=0.8
-        )
-
-    plt.title("DBSCAN Clustering (2D Reduced)")
-    plt.xlabel("PCA Component 1")
-    plt.ylabel("PCA Component 2")
-    plt.legend()
-    plt.grid()
-    plt.show()
-
-
-def visualize_clusters_interactive_3D(data, labels):
-    """
-    Visualize clusters in 3D using PCA dimensionality reduction.
-    Args:
-        data (np.ndarray): Input feature data for visualization.
-        labels (np.ndarray): Cluster labels for the data.
-    """
-    pca = PCA(n_components=3)
-    reduced_data = pca.fit_transform(data)
-    cluster_df = pd.DataFrame(reduced_data, columns=['PCA1', 'PCA2', 'PCA3'])
-    cluster_df['Cluster'] = labels.astype(str)
-    fig = px.scatter_3d(
-        cluster_df,
-        x='PCA1', y='PCA2', z='PCA3',
-        color='Cluster',
-        title="Interactive 3D Clustering Visualization",
-        color_discrete_sequence=px.colors.qualitative.Set1
-    )
-    fig.show()
-
-
-# ====================
 #  MAIN SCRIPT
 # ====================
+
 if __name__ == "__main__":
     file_path = 'data/mock_data.csv'
+    model_path = 'data/models/dbscan_model.joblib'
+
+    # Fit and save the scaler
     normalized_data, original_data = preprocess_data(file_path)
 
-    # Hyperparameter tuning
-    eps_range = np.arange(0.1, 0.5, 0.05)
+    # Tune DBSCAN
+    eps_range = np.arange(0.1, 1.0, 0.05)
     min_samples_range = range(3, 10)
     model, labels, best_eps, best_min_samples, best_score = tune_dbscan_parameters(
         normalized_data, eps_range, min_samples_range
     )
-    print(f"Best eps: {best_eps}, Best min_samples: {best_min_samples}")
-    print(f"Best Silhouette Score: {best_score}")
 
-    # Save the results
+    print(f"Best eps: {best_eps}, Best min_samples: {best_min_samples}")
+    print(f"Best Silhouette Score: {best_score}, Total Clusters Formed: {len(set(labels))}")
+
+    # Save results
     output_df = original_data.copy()
     output_df['Cluster_Label'] = labels
     output_df.to_csv('data/detected_clusters.csv', index=False)
 
-    # Visualize and save the model
-    visualize_clusters_2D(normalized_data, labels)
-    save_dbscan_model(model, 'data/models/dbscan_model.joblib')
+    # Save model and scaler
+    save_dbscan_model(model, model_path)
