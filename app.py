@@ -35,6 +35,7 @@ app.layout = dbc.Container([
     ),
 
     html.Div(id='anomaly-notification', className='mb-4'),
+    html.Div(id="critical-devices-alert", className="mb-4"),
 
     dbc.Row([
         dbc.Col([
@@ -49,6 +50,29 @@ app.layout = dbc.Container([
                 className="mb-4"
             ),
         ], width=3, style={"backgroundColor": "#f8f9fa", "padding": "20px", "borderRadius": "5px"}),
+
+        dbc.Card([
+            dbc.CardBody([
+                html.Label("Critical RUL Threshold:"),
+                dcc.Slider(
+                    id="rul-threshold-slider",
+                    min=1,
+                    max=50,
+                    step=1,
+                    value=10,  # Default threshold
+                    marks={i: str(i) for i in range(1, 51, 5)}
+                ),
+                html.Br(),
+                html.Label("Update Interval (Seconds):"),
+                dcc.Input(
+                    id="update-interval-input",
+                    type="number",
+                    min=1,
+                    value=10,  # Default interval
+                    step=1
+                )
+            ])
+        ], className="mb-4"),
 
         dbc.Col([
             dbc.Card([
@@ -95,6 +119,8 @@ app.layout = dbc.Container([
                             {'name': 'Average Temperature', 'id': 'avg_temperature'},
                             {'name': 'Status', 'id': 'status'},
                             {'name': 'Last Anomaly Timestamp', 'id': 'last_anomaly'},
+                            {'name': 'Predicted RUL', 'id': 'predicted_rul'},  # Add RUL column
+                            {'name': 'RUL Status', 'id': 'rul_status'},  # Add Health Status column
                         ],
                         style_table={'overflowX': 'auto'},
                         style_cell={'textAlign': 'left', 'padding': '10px'},
@@ -145,6 +171,31 @@ def simulate_rul_predictions(devices):
 # ==========
 # CALLBACKS
 # ==========
+@app.callback(
+    Output("critical-devices-alert", "children"),
+    [Input("update-interval", "n_intervals")]
+)
+def update_critical_devices_alert(n_intervals):
+    if iot_data.empty:
+        return None
+
+    # Simulate predictions
+    device_ids = iot_data['device_id'].unique()
+    rul_predictions = simulate_rul_predictions(device_ids)
+
+    # Identify critical devices
+    critical_devices = [pred['device_id'] for pred in rul_predictions if pred['predicted_rul'] <= 10]
+
+    if not critical_devices:
+        return html.Div("All devices are in good condition.", className="alert alert-success")
+
+    # Create an alert for critical devices
+    return html.Div(
+        f"Warning: The following devices have critically low RUL: {', '.join(critical_devices)}.",
+        className="alert alert-danger"
+    )
+
+
 @app.callback(
     Output("rul-bar-chart", "figure"),
     [Input("update-interval", "n_intervals")]
@@ -203,9 +254,11 @@ def export_csv(n_clicks):
 
 @app.callback(
     Output('device-status-table', 'data'),
-    [Input('update-interval', 'n_intervals')]
+    [Input('update-interval', 'n_intervals'),
+     Input("rul-threshold-slider", "value")
+     ]
 )
-def update_device_status_table(n_intervals):
+def update_device_status_table(n_intervals, rul_threshold):
     if iot_data.empty:
         return []
 
@@ -216,13 +269,25 @@ def update_device_status_table(n_intervals):
         'status': lambda x: x.iloc[-1]  # Latest status
     }).reset_index()
 
-    # Rename columns for display purposes
+    # Simulate RUL predictions for devices
+    rul_predictions = simulate_rul_predictions(device_data['device_id'].values)
+    rul_df = pd.DataFrame(rul_predictions)
+
+    # Merge RUL predictions with device metrics
+    device_data = device_data.merge(rul_df, on='device_id', how='left')
+
+    # Add a critical alert column
+    device_data['rul_status'] = device_data['predicted_rul'].apply(
+        lambda rul: "Critical" if rul <= rul_threshold else "Healthy"
+    )
+
+    # Rename columns for display
     device_data.rename(columns={
         'temperature': 'avg_temperature',
         'timestamp': 'last_anomaly',
     }, inplace=True)
 
-    # Convert to list of dictionaries for Dash DataTable
+    # Convert to list of dictionaries for DataTable
     return device_data.to_dict('records')
 
 
