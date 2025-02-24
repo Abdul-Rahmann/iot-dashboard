@@ -65,6 +65,29 @@ app.layout = dbc.Container([
             ], className="mb-4"),
         ], width=9),
     ], className="mb-4"),
+    dbc.Card([
+        dbc.CardHeader("Device Status Table"),
+        dbc.CardBody(
+            dcc.Loading(
+                id="loading-table",
+                type="circle",
+                children=[
+                    dash.dash_table.DataTable(
+                        id='device-status-table',
+                        columns=[
+                            {'name': 'Device ID', 'id': 'device_id'},
+                            {'name': 'Average Temperature', 'id': 'avg_temperature'},
+                            {'name': 'Status', 'id': 'status'},
+                            {'name': 'Last Anomaly Timestamp', 'id': 'last_anomaly'},
+                        ],
+                        style_table={'overflowX': 'auto'},
+                        style_cell={'textAlign': 'left', 'padding': '10px'},
+                        style_header={'backgroundColor': 'rgb(230, 230, 230)', 'fontWeight': 'bold'},
+                    )
+                ]
+            )
+        )
+    ], className="mb-4"),
 
     dcc.Interval(
         id="update-interval",
@@ -77,6 +100,30 @@ app.layout = dbc.Container([
 # ==========
 # CALLBACKS
 # ==========
+@app.callback(
+    Output('device-status-table', 'data'),
+    [Input('update-interval', 'n_intervals')]
+)
+def update_device_status_table(n_intervals):
+    if iot_data.empty:
+        return []
+
+    # Aggregate data: Average metrics and status per device
+    device_data = iot_data.groupby('device_id').agg({
+        'temperature': 'mean',  # Average temperature
+        'timestamp': 'max',  # Most recent timestamp
+        'status': lambda x: x.iloc[-1]  # Latest status
+    }).reset_index()
+
+    # Rename columns for display purposes
+    device_data.rename(columns={
+        'temperature': 'avg_temperature',
+        'timestamp': 'last_anomaly',
+    }, inplace=True)
+
+    # Convert to list of dictionaries for Dash DataTable
+    return device_data.to_dict('records')
+
 
 # Update Live Metrics
 @app.callback(
@@ -99,6 +146,8 @@ def update_live_metrics(n_intervals):
 
     # Append new data to global dataframe
     iot_data = pd.concat([iot_data, new_data]).reset_index(drop=True)
+
+    iot_data = iot_data.tail(500)
 
     # Plot real-time temperature data
     fig = px.line(
