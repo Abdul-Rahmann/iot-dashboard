@@ -18,7 +18,7 @@ dbscan_model = load_dbscan_model('data/models/dbscan_model.joblib')
 scaler_path = "data/models/scaler.joblib"
 
 # Create Dash App
-app = dash.Dash(__name__, external_stylesheets=[dbc.themes.LUX])
+app = dash.Dash(__name__, external_stylesheets=[dbc.themes.CYBORG])
 app.title = "IoT Dashboard with Predictive Maintenance"
 
 # Real-Time IoT Data (global variable for simulation)
@@ -28,123 +28,190 @@ iot_data = pd.DataFrame(
 # ==========
 # DASH LAYOUT
 # ==========
+
+# Enhanced Layout
 app.layout = dbc.Container([
+    # Title Row
     dbc.Row(
-        dbc.Col(html.H1("IoT Dashboard with Predictive Maintenance", className="text-center text-primary mb-4"),
-                width=12),
+        dbc.Col(html.H1("IoT Dashboard with Predictive Maintenance",
+                        className="text-center text-light mb-4"), width=12)
     ),
 
-    html.Div(id='anomaly-notification', className='mb-4'),
-    html.Div(id="critical-devices-alert", className="mb-4"),
-
+# KPIs Section
     dbc.Row([
-        dbc.Col([
-            html.H4("Filters", className="text-secondary"),
-            html.Hr(),
-            html.Label("Select a Cluster to Visualize:", className="text-secondary"),
-            dcc.Dropdown(
-                id='cluster-selector',
-                options=[],  # Dynamically populated
-                value=None,
-                placeholder="Select a Cluster",
-                className="mb-4"
-            ),
-        ], width=3, style={"backgroundColor": "#f8f9fa", "padding": "20px", "borderRadius": "5px"}),
-
-        dbc.Card([
+        dbc.Col(dbc.Card([
             dbc.CardBody([
-                html.Label("Critical RUL Threshold:"),
-                dcc.Slider(
-                    id="rul-threshold-slider",
-                    min=1,
-                    max=50,
-                    step=1,
-                    value=10,  # Default threshold
-                    marks={i: str(i) for i in range(1, 51, 5)}
-                ),
-                html.Br(),
-                html.Label("Update Interval (Seconds):"),
-                dcc.Input(
-                    id="update-interval-input",
-                    type="number",
-                    min=1,
-                    value=10,  # Default interval
-                    step=1
-                )
+                html.H4("Devices Online", className="text-success"),
+                html.H2(id="kpi-devices-online", children="0", className="text-success")
             ])
-        ], className="mb-4"),
+        ], className="card border-success mb-4"), width=3),
 
+        dbc.Col(dbc.Card([
+            dbc.CardBody([
+                html.H4("Total Anomalies", className="text-danger"),
+                html.H2(id="kpi-total-anomalies", children="0", className="text-danger")
+            ])
+        ], className="card border-danger mb-4"), width=3),
+
+        dbc.Col(dbc.Card([
+            dbc.CardBody([
+                html.H4("Avg. Temperature (°C)", className="text-info"),
+                html.H2(id="kpi-average-temp", children="0", className="text-info")
+            ])
+        ], className="card border-info mb-4"), width=3),
+
+        dbc.Col(dbc.Card([
+            dbc.CardBody([
+                html.H4("Critical Devices", className="text-warning"),
+                html.H2(id="kpi-critical-devices", children="0", className="text-warning")
+            ])
+        ], className="card border-warning mb-4"), width=3),
+    ]),
+
+    # Sidebar and Main Content Row
+    dbc.Row([
+        # Sidebar (Filters Section)
         dbc.Col([
             dbc.Card([
-                dbc.CardHeader("Real-Time Metrics"),
-                dbc.CardBody(dcc.Graph(id='live-metrics'))
-            ], className="mb-4"),
+                dbc.CardHeader(html.H4("Filters", className="text-primary")),
+                dbc.CardBody([
+                    html.Label("Select a Cluster:", className="text-primary"),
+                    dcc.Dropdown(
+                        id='cluster-selector',
+                        options=[],  # Dynamically populated
+                        value=None,
+                        placeholder="Select a Cluster",
+                        className="mb-3"
+                    ),
+                    html.Label("Critical RUL Threshold:", className="text-primary"),
+                    dcc.Slider(
+                        id="rul-threshold-slider",
+                        min=1, max=50, step=1, value=10,
+                        marks={i: str(i) for i in range(1, 51, 5)},
+                        className="mb-4"
+                    ),
+                    html.Label("Update Interval (Seconds):", className="text-primary"),
+                    dcc.Input(
+                        id="update-interval-input",
+                        type="number", min=1, step=1, value=10,
+                        className="mb-3"
+                    ),
+                    dbc.Button("Update Filters", id="filter-button", color="light", class_name="w-100")
+                ])
+            ], className="mb-4 text-light"),
+        ], width=3, style={"backgroundColor": "#343a40", "padding": "20px", "borderRadius": "8px"}),
 
-            dbc.Card([
-                dbc.CardHeader("3D Cluster Visualization"),
-                dbc.CardBody(dcc.Graph(id='3d-cluster'))
-            ], className="mb-4"),
+        # Main Content
+        dbc.Col([
+            # Real-Time Metrics and Charts Row
+            dbc.Row([
+                dbc.Col(dbc.Card([
+                    dbc.CardHeader(html.H5("Live Metrics", className="text-center text-info")),
+                    dbc.CardBody([
+                        dcc.Loading(
+                            id="loading-live-metrics",
+                            type="default",
+                            children=dcc.Graph(id='live-metrics')
+                        )
+                    ])
+                ], className="mb-4"), width=6),
 
-            dbc.Card([
-                dbc.CardHeader("Anomaly Count"),
-                dbc.CardBody(dcc.Graph(id='anomaly-count'))
-            ], className="mb-4"),
-        ], width=9),
-    ], className="mb-4"),
+                dbc.Col(dbc.Card([
+                    dbc.CardHeader(html.H5("3D Cluster Visualization", className="text-center text-info")),
+                    dbc.CardBody([
+                        dcc.Loading(
+                            id="loading-cluster-visualization",
+                            type="circle",
+                            children=dcc.Graph(id='3d-cluster')
+                        )
+                    ])
+                ], className="mb-4"), width=6)
+            ]),
 
-    dbc.Card([
-        dbc.CardHeader("Remaining Useful Life (RUL) Prediction"),
-        dbc.CardBody([
-            dcc.Loading(
-                id="loading-rul-chart",
-                type="circle",
-                children=[
-                    dcc.Graph(id="rul-bar-chart")
-                ]
-            )
-        ])
-    ], className="mb-4"),
+            # Anomaly and RUL Charts Row
+            dbc.Row([
+                dbc.Col(dbc.Card([
+                    dbc.CardHeader(html.H5("Anomaly Count", className="text-center text-warning")),
+                    dbc.CardBody([
+                        dcc.Loading(
+                            id="loading-anomaly-chart",
+                            type="circle",
+                            children=dcc.Graph(id='anomaly-count')
+                        )
+                    ])
+                ], className="mb-4"), width=6),
+                dbc.Col(dbc.Card([
+                    dbc.CardHeader(html.H5("Remaining Useful Life (RUL)", className="text-center text-danger")),
+                    dbc.CardBody([
+                        dcc.Loading(
+                            id="loading-rul-chart",
+                            type="circle",
+                            children=dcc.Graph(id='rul-bar-chart')
+                        )
+                    ])
+                ], className="mb-4"), width=6)
+            ]),
 
-    dbc.Card([
-        dbc.CardHeader("Device Status Table"),
-        dbc.CardBody(
-            dcc.Loading(
-                id="loading-table",
-                type="circle",
-                children=[
-                    dash.dash_table.DataTable(
+            # Alerts Section
+            dbc.Row([
+                dbc.Col(
+                    html.Div(id="critical-devices-alert", className="alert alert-danger text-center"),
+                    width=12
+                )
+            ]),
+        ], width=9)
+    ]),
+
+    # Device Status Table Section
+    dbc.Row(
+        dbc.Col(dbc.Card([
+            dbc.CardHeader(html.H4("Device Status Table", className="text-success")),
+            dbc.CardBody([
+                dcc.Loading(
+                    id="loading-table",
+                    type="circle",
+                    children=dash.dash_table.DataTable(
                         id='device-status-table',
                         columns=[
                             {'name': 'Device ID', 'id': 'device_id'},
                             {'name': 'Average Temperature', 'id': 'avg_temperature'},
                             {'name': 'Status', 'id': 'status'},
                             {'name': 'Last Anomaly Timestamp', 'id': 'last_anomaly'},
-                            {'name': 'Predicted RUL', 'id': 'predicted_rul'},  # Add RUL column
-                            {'name': 'RUL Status', 'id': 'rul_status'},  # Add Health Status column
+                            {'name': 'Predicted RUL', 'id': 'predicted_rul'},
+                            {'name': 'RUL Status', 'id': 'rul_status'}
                         ],
                         style_table={'overflowX': 'auto'},
-                        style_cell={'textAlign': 'left', 'padding': '10px'},
-                        style_header={'backgroundColor': 'rgb(230, 230, 230)', 'fontWeight': 'bold'},
+                        style_cell={
+                            'textAlign': 'left',
+                            'padding': '10px',
+                            'backgroundColor': '#393939',
+                            'color': 'white'
+                        },
+                        style_header={'backgroundColor': '#6c757d', 'fontWeight': 'bold', 'color': 'white'},
                     )
-                ]
-            )
-        )
-    ], className="mb-4"),
+                )
+            ]),
+        ], className="mb-4"), width=12)
+    ),
 
-    # Add to the layout
-    dbc.Card([
-        dbc.CardBody([
-            dbc.Button("Download CSV", id="download-button", color="primary", className="me-2"),
-            dcc.Download(id="download-dataframe-csv")
-        ])
-    ], className="mb-4"),
+    # CSV Download Section
+    dbc.Row(
+        dbc.Col(dbc.Card([
+            dbc.CardBody([
+                dbc.Button("Download CSV", id="download-button", color="primary", className="me-2"),
+                dcc.Download(id="download-dataframe-csv")
+            ])
+        ], className="mb-4"), width=12)
+    ),
 
+    # Interval Component
     dcc.Interval(
         id="update-interval",
-        interval=2000,  # Increase interval to reduce processing load
+        interval=2000,
         n_intervals=0
     )
 ], fluid=True)
+
 
 
 # =================
@@ -171,6 +238,38 @@ def simulate_rul_predictions(devices):
 # ==========
 # CALLBACKS
 # ==========
+# Callback for Updating KPIs
+@app.callback(
+    [
+        Output("kpi-devices-online", "children"),
+        Output("kpi-total-anomalies", "children"),
+        Output("kpi-average-temp", "children"),
+        Output("kpi-critical-devices", "children")
+    ],
+    [Input("update-interval", "n_intervals")]
+)
+def update_kpis(n_intervals):
+    if iot_data.empty:
+        return 0, 0, 0, 0  # Default values when no data
+
+    # KPI 1: Total Devices Online
+    total_devices = len(iot_data['device_id'].unique())
+
+    # KPI 2: Total Anomalies
+    total_anomalies = iot_data[iot_data["status"] == "Anomaly"].shape[0]
+
+    # KPI 3: Average Temperature
+    avg_temp = round(iot_data["temperature"].mean(), 2) if not iot_data.empty else 0
+
+    # KPI 4: Critical Devices (RUL <= threshold)
+    rul_threshold = 10  # Can be taken from user input
+    device_ids = iot_data['device_id'].unique()
+    rul_predictions = simulate_rul_predictions(device_ids)
+    critical_devices = sum([1 for pred in rul_predictions if pred["predicted_rul"] <= rul_threshold])
+
+    return total_devices, total_anomalies, avg_temp, critical_devices
+
+
 @app.callback(
     Output("critical-devices-alert", "children"),
     [Input("update-interval", "n_intervals")]
