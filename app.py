@@ -37,7 +37,7 @@ app.layout = dbc.Container([
                         className="text-center text-light mb-4"), width=12)
     ),
 
-# KPIs Section
+    # KPIs Section
     dbc.Row([
         dbc.Col(dbc.Card([
             dbc.CardBody([
@@ -213,7 +213,6 @@ app.layout = dbc.Container([
 ], fluid=True)
 
 
-
 # =================
 # HELPER FUNCTIONS
 # =================
@@ -246,9 +245,11 @@ def simulate_rul_predictions(devices):
         Output("kpi-average-temp", "children"),
         Output("kpi-critical-devices", "children")
     ],
-    [Input("update-interval", "n_intervals")]
+    [Input("update-interval", "n_intervals"),
+     Input("rul-threshold-slider", "value")
+     ]
 )
-def update_kpis(n_intervals):
+def update_kpis(n_intervals, rul_threshold):
     if iot_data.empty:
         return 0, 0, 0, 0  # Default values when no data
 
@@ -262,7 +263,7 @@ def update_kpis(n_intervals):
     avg_temp = round(iot_data["temperature"].mean(), 2) if not iot_data.empty else 0
 
     # KPI 4: Critical Devices (RUL <= threshold)
-    rul_threshold = 10  # Can be taken from user input
+    # rul_threshold = 10  # Can be taken from user input
     device_ids = iot_data['device_id'].unique()
     rul_predictions = simulate_rul_predictions(device_ids)
     critical_devices = sum([1 for pred in rul_predictions if pred["predicted_rul"] <= rul_threshold])
@@ -297,9 +298,11 @@ def update_critical_devices_alert(n_intervals):
 
 @app.callback(
     Output("rul-bar-chart", "figure"),
-    [Input("update-interval", "n_intervals")]
+    [Input("update-interval", "n_intervals"),
+     Input("rul-threshold-slider", "value")
+     ]
 )
-def update_rul_predictions(n_intervals):
+def update_rul_predictions(n_intervals, rul_threshold):
     if iot_data.empty:
         # Return an empty figure if no data is available
         return px.bar(title="No RUL Data Available")
@@ -324,7 +327,7 @@ def update_rul_predictions(n_intervals):
     )
 
     # Add threshold line (RUL < 10 days is an alert)
-    fig.add_hline(y=10, line_dash="dot", line_color="red", annotation_text="Maintenance Needed")
+    fig.add_hline(y=rul_threshold, line_dash="dot", line_color="red", annotation_text="Maintenance Needed")
 
     return fig
 
